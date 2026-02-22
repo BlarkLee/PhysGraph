@@ -1,7 +1,7 @@
 <p align="center">
 <h1 align="center"<strong>PhysGraph: Physically-Grounded Graph-Transformer Policies for Bimanual Dexterous Hand–Tool–Object Manipulation</strong></h1>
   <p align="center">
-    <a href='https://blarklee.github.io/' target='_blank'>Runfa Blark Li</a><sup>1,2</sup>
+    <a href='https://blarklee.github.io/' target='_blank'>Runfa Blark Li</a>
     ·
     <a href='' target='_blank'>David Kim</a>
     ·
@@ -37,7 +37,7 @@
 
 ## 📹 Demo
 <p align="center">
-    <img src="assets/artimano_all_label.gif" align="center" width=60% >
+    <img src="assets/artimano_all_labeled.gif" align="center" width=60% >
     <br>
 </p>
 While recent learning-based approaches have made substantial progress on dexterous manipulation, bimanual tool-use remains particularly challenging. PhysGraph significantly outperforms SOTA baseline on challenging bimanual tool-use tasks in success rate and motion fidelity, supports zero-shot generalization to unseen tool/object in different tasks, and is embodiment-agnostic to popular robotic dex-hands (Shadow, Allegro, Inspire)
