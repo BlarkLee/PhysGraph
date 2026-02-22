@@ -129,6 +129,8 @@ We follow the prerequisit of [ManipTrans](https://maniptrans.github.io/) to prep
 </details>
 
 
+## ▶️ Usage
+<a id="usage"></a>
 ### BiManual Tool-Use Policies
 
 1. **Preprocessing**
