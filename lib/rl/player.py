@@ -387,6 +387,7 @@ class MyBasePlayer(object):
             prev_done = None
             prev_success_buf = None
 
+        self.is_rnn = False
         need_init_rnn = self.is_rnn
 
         obses = self.env_reset(self.env)
@@ -565,7 +566,7 @@ class MyPPOPlayerContinuous(MyBasePlayer):
         self.model = self.network.build(config)
         self.model.to(self.device)
         self.model.eval()
-        self.is_rnn = self.model.is_rnn()
+        #self.is_rnn = self.model.is_rnn()
 
     def get_action(self, obs, is_deterministic=False):
         if self.has_batch_dimension == False:
