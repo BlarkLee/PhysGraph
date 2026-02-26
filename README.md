@@ -7,9 +7,9 @@
     ·
     <a href='' target='_blank'>Xinshuang Liu</a>
     ·
-    <a href='' target='_blank'>Dwait Bhatt</a>
-    ·
     <a href='' target='_blank'>Keito Suzuki</a>
+    ·
+    <a href='' target='_blank'>Dwait Bhatt</a>
     ·
     <a href='' target='_blank'>Nikola Raicevic</a>
     ·
