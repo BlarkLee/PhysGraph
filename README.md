@@ -163,7 +163,15 @@ We follow the prerequisit of [ManipTrans](https://maniptrans.github.io/) to prep
 ## Citation
 <a id="Citation"></a>
 ```
-
+@misc{physgraph,
+      title={PhysGraph: Physically-Grounded Graph-Transformer Policies for Bimanual Dexterous Hand-Tool-Object Manipulation}, 
+      author={Runfa Blark Li and David Kim and Xinshuang Liu and Keito Suzuki and Dwait Bhatt and Nikola Raicevic and Xin Lin and Ki Myung Brian Lee and Nikolay Atanasov and Truong Nguyen},
+      year={2026},
+      eprint={2603.01436},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2603.01436}, 
+}
 ```
 
 ## 🙏 Acknowledgement
