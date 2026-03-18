@@ -26,9 +26,9 @@
   </p>
 </p>
 <p align="center">
-  <a href=''>
+  <a href='https://arxiv.org/abs/2603.01436'>
     <img src='https://img.shields.io/badge/arXiv-2503.19901-A42C25?style=flat&logo=arXiv&logoColor=A42C25'></a>
-  <a href=''>
+  <a href='https://arxiv.org/abs/2603.01436'>
     <img src='https://img.shields.io/badge/Paper-PDF-yellow?style=flat&logo=arXiv&logoColor=yellow'></a>
   <a href='https://blarklee.github.io/PhysGraph_website_official/'>
     <img src='https://img.shields.io/badge/Project-Page-green?style=flat&logo=Google%20chrome&logoColor=green'></a>
