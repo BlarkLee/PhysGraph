@@ -154,7 +154,7 @@ We follow the prerequisit of [ManipTrans](https://maniptrans.github.io/) to prep
 3. **Test**
   Test the bi-manual policy:
     ```bash
-    python main/rl/train.py task=ResDexHand dexhand=inspire side=BiH headless=false num_envs=4 learning_rate=2e-4 test=true randomStateInit=false dataIndices=[083f7@0] actionsMovingAverage=0.4 checkpoint=runs/083f7@0_artimano__xxxxxx/nn/083f7@0_artimano.pth
+    python main/rl/train.py task=ResDexHand dexhand=artimano side=BiH headless=false num_envs=4 learning_rate=2e-4 test=true randomStateInit=false dataIndices=[083f7@0] actionsMovingAverage=0.4 checkpoint=runs/083f7@0_artimano__xxxxxx/nn/083f7@0_artimano.pth
     ```
 ---
 
