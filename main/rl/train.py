@@ -113,6 +113,10 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     register_network("res_bih_dict_obs_actor_critic", ResBiHDictObsBuilder)
     register_model("res_bih_my_continuous_a2c_logstd", ModelA2CContinuousLogStdBiH)
+    register_network("res_rh_dict_obs_actor_critic", ResBiHDictObsBuilder)
+    register_network("res_lh_dict_obs_actor_critic", ResBiHDictObsBuilder)
+    register_model("res_rh_my_continuous_a2c_logstd", ModelA2CContinuousLogStdBiH)
+    register_model("res_lh_my_continuous_a2c_logstd", ModelA2CContinuousLogStdBiH)
 
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:

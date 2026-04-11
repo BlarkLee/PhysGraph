@@ -10,6 +10,8 @@ __ALL__ = ["TASK_MAP", "make"]
 
 TASK_MAP = {
     "ResDexHandBiH": DexHandManipBiHEnv,
+    "ResDexHandRH": DexHandManipRHEnv,
+    "ResDexHandLH": DexHandManipLHEnv,
 }
 
 

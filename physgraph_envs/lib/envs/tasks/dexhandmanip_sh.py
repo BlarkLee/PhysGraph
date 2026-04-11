@@ -93,6 +93,17 @@ class DexHandManipRHEnv(VecTask):
 
         self.dataIndices = self.cfg["env"]["dataIndices"]
         self.obs_future_length = self.cfg["env"]["obsFutureLength"]
+        self.point_track_k = int(self.cfg["env"].get("pointTrackK", 32))
+        self.use_point_target = bool(self.cfg["env"].get("usePointTarget", False))
+        self.use_pt_flow = bool(self.cfg["env"].get("usePtFlow", False))
+        self.use_region_geom = bool(self.cfg["env"].get("useRegionGeom", False))
+        self.pose_fallback = bool(self.cfg["env"].get("poseFallback", True))
+        self.w_hand_base_reward = float(self.cfg["env"].get("wHandBaseReward", 1.0))
+        self.w_pt_pos_reward = float(self.cfg["env"].get("wPtPosReward", 1.0))
+        self.w_pt_flow_reward = float(self.cfg["env"].get("wPtFlowReward", 0.5))
+        self.w_region_geom_reward = float(self.cfg["env"].get("wRegionGeomReward", 0.2))
+        self.pt_pos_beta = float(self.cfg["env"].get("ptPosBeta", 20.0))
+        self.pt_flow_beta = float(self.cfg["env"].get("ptFlowBeta", 10.0))
         self.rollout_state_init = self.cfg["env"]["rolloutStateInit"]
         self.random_state_init = self.cfg["env"]["randomStateInit"]
 
@@ -158,6 +169,11 @@ class DexHandManipRHEnv(VecTask):
             )
             * self.obs_future_length
         )
+        if self.use_point_target:
+            point_obs_dim = self.point_track_k * 3 + self.point_track_k
+            if self.use_pt_flow:
+                point_obs_dim += self.point_track_k * 3
+            TARGET_OBS_DIM += point_obs_dim * self.obs_future_length
         self.obs_dict.update(
             {
                 "target": torch.zeros((self.num_envs, TARGET_OBS_DIM), device=self.device),
@@ -184,6 +200,7 @@ class DexHandManipRHEnv(VecTask):
 
         obj_verts = self.demo_data["obj_verts"]
         self.obj_bps = self.bps_layer.encode(obj_verts, feature_type=self.bps_feat_type)[self.bps_feat_type]
+        self.obj_track_points = self._build_fixed_k_points(obj_verts, self.point_track_k)
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -253,6 +270,7 @@ class DexHandManipRHEnv(VecTask):
                 max_seq_len=self.max_episode_length,
                 dexhand=self.dexhand,
                 embodiment=self.cfg["env"]["dexhand"],
+                point_track_k=self.point_track_k,
             )
 
         dexhand_asset_file = self.dexhand.urdf_path
@@ -507,6 +525,31 @@ class DexHandManipRHEnv(VecTask):
         CONTACT_HISTORY_LEN = 3
         self.tips_contact_history = torch.ones(self.num_envs, CONTACT_HISTORY_LEN, 5, device=self.device).bool()
 
+    def _build_fixed_k_points(self, points: Tensor, k: int) -> Tensor:
+        # points: [..., N, 3]
+        n = points.shape[-2]
+        if n == k:
+            return points
+        if n > k:
+            return points[..., :k, :]
+        pad = points[..., -1:, :].repeat(*([1] * (points.ndim - 2)), k - n, 1)
+        return torch.cat([points, pad], dim=-2)
+
+    def _compose_current_obj_points(self, num_future: int = 1) -> Tensor:
+        # output: [B, F, K, 3], where F is num_future
+        quat = self.states["manip_obj_quat"]
+        pos = self.states["manip_obj_pos"]
+        base_points = self.obj_track_points
+
+        k = base_points.shape[1]
+        pts_flat = base_points.reshape(self.num_envs * k, 3)
+        quat_rep = quat[:, None, :].repeat(1, k, 1).reshape(self.num_envs * k, 4)
+        world = torch_jit_utils.quat_apply(quat_rep, pts_flat).reshape(self.num_envs, k, 3) + pos[:, None, :]
+
+        if num_future == 1:
+            return world[:, None, :, :]
+        return world[:, None, :, :].repeat(1, num_future, 1, 1)
+
     def pack_data(self, data):
         packed_data = {}
         packed_data["seq_len"] = torch.tensor([len(d["obj_trajectory"]) for d in data], device=self.device)
@@ -552,6 +595,32 @@ class DexHandManipRHEnv(VecTask):
                 raise RuntimeError("Using np is very slow.")
             else:
                 packed_data[k] = [d[k] for d in data]
+
+        if self.use_point_target and "obj_points_t" not in packed_data:
+            obj_verts = self._build_fixed_k_points(packed_data["obj_verts"], self.point_track_k)
+            traj = packed_data["obj_trajectory"]  # [B, T, 4, 4]
+            points = (traj[:, :, :3, :3] @ obj_verts[:, None].transpose(-1, -2)).transpose(-1, -2) + traj[
+                :, :, :3, 3
+            ][:, :, None, :]
+            packed_data["obj_points_t"] = points
+            packed_data["obj_points_target_t"] = torch.cat([points[:, 1:], points[:, -1:]], dim=1)
+            packed_data["obj_points_mask_t"] = torch.ones(
+                points.shape[0], points.shape[1], points.shape[2], device=self.device
+            )
+        if self.use_point_target and "obj_points_t" in packed_data:
+            packed_data["obj_points_t"] = self._build_fixed_k_points(packed_data["obj_points_t"], self.point_track_k)
+            packed_data["obj_points_target_t"] = self._build_fixed_k_points(
+                packed_data["obj_points_target_t"], self.point_track_k
+            )
+            mask = packed_data["obj_points_mask_t"]
+            if mask.ndim == 4 and mask.shape[-1] == 1:
+                mask = mask.squeeze(-1)
+            if mask.shape[-1] < self.point_track_k:
+                pad = mask[..., -1:].repeat(1, 1, self.point_track_k - mask.shape[-1])
+                mask = torch.cat([mask, pad], dim=-1)
+            else:
+                mask = mask[..., : self.point_track_k]
+            packed_data["obj_points_mask_t"] = mask
         return packed_data
 
     def allocate_buffers(self):
@@ -868,6 +937,68 @@ class DexHandManipRHEnv(VecTask):
             scale_factor,
             self.dexhand.weight_idx,
         )
+        if self.use_point_target and "obj_points_target_t" in self.demo_data:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+            source_points = self.demo_data["obj_points_t"][env_ids, cur_idx]
+            target_points = self.demo_data["obj_points_target_t"][env_ids, cur_idx]
+            point_mask = self.demo_data["obj_points_mask_t"][env_ids, cur_idx]
+            current_points = self._compose_current_obj_points(1).squeeze(1)
+
+            pt_pos_dist = torch.norm((target_points - current_points) * point_mask.unsqueeze(-1), dim=-1)
+            pt_pos_dist = pt_pos_dist.sum(-1) / torch.clamp(point_mask.sum(-1), min=1.0)
+            reward_pt_pos = torch.exp(-self.pt_pos_beta * pt_pos_dist)
+
+            reward_pt_flow = torch.zeros_like(reward_pt_pos)
+            if self.use_pt_flow:
+                target_flow = target_points - source_points
+                current_flow = current_points - source_points
+                pt_flow_dist = torch.norm((target_flow - current_flow) * point_mask.unsqueeze(-1), dim=-1)
+                pt_flow_dist = pt_flow_dist.sum(-1) / torch.clamp(point_mask.sum(-1), min=1.0)
+                reward_pt_flow = torch.exp(-self.pt_flow_beta * pt_flow_dist)
+
+            reward_region_geom = torch.zeros_like(reward_pt_pos)
+            if self.use_region_geom:
+                obj_to_joints = torch.norm(self.states["manip_obj_pos"][:, None] - self.states["joints_state"][:, :, :3], dim=-1)
+                reward_region_geom = torch.exp(-10.0 * obj_to_joints.min(dim=-1).values)
+
+            hand_base = (
+                0.1 * self.reward_dict["reward_eef_pos"]
+                + 0.6 * self.reward_dict["reward_eef_rot"]
+                + 0.1 * self.reward_dict["reward_eef_vel"]
+                + 0.05 * self.reward_dict["reward_eef_ang_vel"]
+                + 0.1 * self.reward_dict["reward_joints_vel"]
+                + 0.7 * self.reward_dict["reward_joints_pos"]
+                + 1.0 * self.reward_dict["reward_finger_tip_force"]
+                + 0.5 * self.reward_dict["reward_power"]
+                + 0.5 * self.reward_dict["reward_wrist_power"]
+            )
+            pose_obj_reward = (
+                5.0 * self.reward_dict["reward_obj_pos"]
+                + 1.0 * self.reward_dict["reward_obj_rot"]
+                + 0.1 * self.reward_dict["reward_obj_vel"]
+                + 0.1 * self.reward_dict["reward_obj_ang_vel"]
+            )
+            self.rew_buf[:] = (
+                self.w_hand_base_reward * hand_base
+                + self.w_pt_pos_reward * reward_pt_pos
+                + self.w_pt_flow_reward * reward_pt_flow
+                + self.w_region_geom_reward * reward_region_geom
+                + (pose_obj_reward if self.pose_fallback else 0.0)
+            )
+            self.reward_dict["reward_pt_pos"] = reward_pt_pos
+            self.reward_dict["reward_pt_flow"] = reward_pt_flow
+            self.reward_dict["reward_region_geom"] = reward_region_geom
+
+            if not self.pose_fallback:
+                failed_execute = self.error_buf.bool()
+                succeeded = (self.progress_buf + 1 + 3 >= max_length) & ~failed_execute
+                self.failure_buf[:] = failed_execute
+                self.success_buf[:] = succeeded
+                self.reset_buf[:] = torch.where(
+                    succeeded | failed_execute,
+                    torch.ones_like(self.reset_buf),
+                    torch.zeros_like(self.reset_buf),
+                )
         self.total_rew_buf += self.rew_buf
 
     def compute_observations(self):
@@ -993,31 +1124,51 @@ class DexHandManipRHEnv(VecTask):
         next_target_state["gt_tips_distance"] = indicing(self.demo_data["tips_distance"], cur_idx).reshape(nE, -1)
 
         next_target_state["bps"] = self.obj_bps
+        target_concat_keys = [
+            "delta_wrist_pos",
+            "wrist_vel",
+            "delta_wrist_vel",
+            "wrist_quat",
+            "delta_wrist_quat",
+            "wrist_ang_vel",
+            "delta_wrist_ang_vel",
+            "delta_joints_pos",
+            "joints_vel",
+            "delta_joints_vel",
+            "delta_manip_obj_pos",
+            "manip_obj_vel",
+            "delta_manip_obj_vel",
+            "manip_obj_quat",
+            "delta_manip_obj_quat",
+            "manip_obj_ang_vel",
+            "delta_manip_obj_ang_vel",
+            "obj_to_joints",
+            "gt_tips_distance",
+            "bps",
+        ]
+        if self.use_point_target and "obj_points_target_t" in self.demo_data:
+            target_points = indicing(self.demo_data["obj_points_target_t"], cur_idx).reshape(nE, nF, self.point_track_k, 3)
+            current_points = self._compose_current_obj_points(nF)
+            point_mask = indicing(self.demo_data["obj_points_mask_t"], cur_idx).reshape(nE, nF, self.point_track_k)
+            next_target_state["delta_obj_points"] = (
+                (target_points - current_points) * point_mask.unsqueeze(-1)
+            ).reshape(nE, -1)
+            next_target_state["obj_points_mask"] = point_mask.reshape(nE, -1)
+            target_concat_keys.extend(["delta_obj_points", "obj_points_mask"])
+
+            if self.use_pt_flow:
+                source_points = indicing(self.demo_data["obj_points_t"], cur_idx).reshape(nE, nF, self.point_track_k, 3)
+                target_flow = target_points - source_points
+                current_flow = current_points - source_points
+                next_target_state["delta_obj_points_flow"] = (
+                    (target_flow - current_flow) * point_mask.unsqueeze(-1)
+                ).reshape(nE, -1)
+                target_concat_keys.append("delta_obj_points_flow")
+
         self.obs_dict["target"][:] = torch.cat(
             [
                 next_target_state[ob]
-                for ob in [  # ! must be in the same order as the following
-                    "delta_wrist_pos",
-                    "wrist_vel",
-                    "delta_wrist_vel",
-                    "wrist_quat",
-                    "delta_wrist_quat",
-                    "wrist_ang_vel",
-                    "delta_wrist_ang_vel",
-                    "delta_joints_pos",
-                    "joints_vel",
-                    "delta_joints_vel",
-                    "delta_manip_obj_pos",
-                    "manip_obj_vel",
-                    "delta_manip_obj_vel",
-                    "manip_obj_quat",
-                    "delta_manip_obj_quat",
-                    "manip_obj_ang_vel",
-                    "delta_manip_obj_ang_vel",
-                    "obj_to_joints",
-                    "gt_tips_distance",
-                    "bps",
-                ]
+                for ob in target_concat_keys
             ],
             dim=-1,
         )

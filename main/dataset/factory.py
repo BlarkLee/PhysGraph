@@ -40,7 +40,9 @@ class ManipDataFactory:
         else:
             is_mirrored = False
 
-        if type(index) == str and "@" in index:
+        if type(index) == str and index.startswith("d"):
+            dtype = "dexycb"
+        elif type(index) == str and "@" in index:
             dtype = "oakink2"
         elif type(index) == str and index.startswith("g"):
             dtype = "grabdemo"
@@ -49,6 +51,6 @@ class ManipDataFactory:
         else:
             dtype = "favor"
 
-        if is_mirrored:
+        if is_mirrored and dtype != "dexycb":
             dtype += "_mirrored"
         return dtype

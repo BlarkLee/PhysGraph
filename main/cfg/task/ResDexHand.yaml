@@ -19,6 +19,17 @@ env:
 
   dataIndices: ${resolve_default:[],${...dataIndices}}
   obsFutureLength: 1
+  pointTrackK: 32
+  usePointTarget: False
+  usePtFlow: False
+  useRegionGeom: False
+  poseFallback: True
+  wHandBaseReward: 1.0
+  wPtPosReward: 1.0
+  wPtFlowReward: 0.5
+  wRegionGeomReward: 0.2
+  ptPosBeta: 20.0
+  ptFlowBeta: 10.0
 
   rolloutLen: ${resolve_default:None,${...rolloutLen}}
   rolloutBegin: ${resolve_default:None,${...rolloutBegin}}
