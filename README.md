@@ -178,6 +178,20 @@ We follow the prerequisit of [ManipTrans](https://maniptrans.github.io/) to prep
 6. **Result templates (CSV/Markdown)**
     - `docs/templates/a0_a3_results_template.csv`
     - `docs/templates/a0_a3_results_template.md`
+
+7. **BiH contrast (point-track usefulness on bimanual data)**
+    ```bash
+    # replace 083f7@0 with your valid bimanual OakInk index
+    python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=BiH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=BiH_A0_pose_s42 dataIndices=[083f7@0] auto_oakink_short=False oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=False task.env.usePtFlow=False task.env.useRegionGeom=False task.env.poseFallback=True
+
+    python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=BiH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=BiH_A3_ptpos_ptflow_region_s42 dataIndices=[083f7@0] auto_oakink_short=False oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=True task.env.usePtFlow=True task.env.useRegionGeom=True task.env.poseFallback=True
+    ```
+
+    Or run the batch script in bimanual mode:
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File main/rl/run_a0_a3_oakink.ps1 -Mode gate -Side BiH
+    ```
+    To lock experiments on a fixed index (recommended for cleaner A/B), add `-DataIndex 083f7@0`.
 ---
 
 

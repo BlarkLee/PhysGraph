@@ -2,9 +2,10 @@ param(
     [ValidateSet("smoke", "gate")]
     [string]$Mode = "gate",
     [string]$DexHand = "inspire",
-    [ValidateSet("RH", "LH")]
+    [ValidateSet("RH", "LH", "BiH")]
     [string]$Side = "RH",
     [string]$OakinkDataDir = "data/OakInk-v2",
+    [string]$DataIndex = "",
     [string]$RunsRoot = "runs",
     [string]$AnalysisDir = "runs/analysis",
     [switch]$SkipTrain,
@@ -40,6 +41,11 @@ $common = @(
     "oakink_data_dir=$OakinkDataDir",
     "oakink_skip=2"
 )
+
+if ($DataIndex -ne "") {
+    $common = $common | Where-Object { $_ -notlike "dataIndices=*" -and $_ -notlike "auto_oakink_short=*" }
+    $common += @("dataIndices=[$DataIndex]", "auto_oakink_short=False")
+}
 
 $ablations = @(
     @{ Name = "A0_pose_baseline"; Extra = @("task.env.usePointTarget=False", "task.env.usePtFlow=False", "task.env.useRegionGeom=False", "task.env.poseFallback=True") },

@@ -148,3 +148,12 @@
 6. 手工模板：
    - `docs/templates/a0_a3_results_template.csv`
    - `docs/templates/a0_a3_results_template.md`
+
+### BiH Point-Track Contrast (optional, current data reality)
+1. Goal: verify whether point-track rewards/targets improve BiH performance on the same OakInk index.
+2. Keep index fixed (for example `083f7@0`) to avoid data-selection noise.
+3. Minimal contrast:
+   - `BiH_A0_pose_s{seed}`: `usePointTarget=False`, `usePtFlow=False`, `useRegionGeom=False`
+   - `BiH_A3_ptpos_ptflow_region_s{seed}`: `usePointTarget=True`, `usePtFlow=True`, `useRegionGeom=True`
+4. Suggested seeds: `42,142,242`.
+5. Recommended command path: `main/rl/run_a0_a3_oakink.ps1 -Side BiH -DataIndex <hash@stage>`.
