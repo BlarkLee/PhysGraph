@@ -28,7 +28,13 @@ actionsMovingAverage: 1.0
 
 usePIDControl: False
 
-dataIndices: [7]
+dataIndices: [oakink_auto_short]
+auto_oakink_short: True
+oakink_short_topk: 1
+oakink_short_max_frames: 180
+oakink_require_retargeted: False
+oakink_data_dir: data/OakInk-v2
+oakink_skip: 2
 
 # seed - set to -1 to choose random seed
 seed: 42

@@ -18,6 +18,12 @@ env:
   randomStateInit: ${resolve_default:True,${...randomStateInit}}
 
   dataIndices: ${resolve_default:[],${...dataIndices}}
+  autoOakinkShort: ${resolve_default:False,${...auto_oakink_short}}
+  oakinkShortTopK: ${resolve_default:1,${...oakink_short_topk}}
+  oakinkShortMaxFrames: ${resolve_default:180,${...oakink_short_max_frames}}
+  oakinkRequireRetargeted: ${resolve_default:False,${...oakink_require_retargeted}}
+  oakinkDataDir: ${resolve_default:data/OakInk-v2,${...oakink_data_dir}}
+  oakinkSkip: ${resolve_default:2,${...oakink_skip}}
   obsFutureLength: 1
   pointTrackK: 32
   usePointTarget: False

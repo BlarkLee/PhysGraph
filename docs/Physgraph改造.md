@@ -1,17 +1,22 @@
 # PhysGraph 改造研究方向（2026-04-11）
 
+## 0. 决策更新（2026-04-12）
+- 数据集路线调整：第一阶段从 DexYCB 回切到 OakInk（原项目已适配）。
+- 执行原则：优先复用原 OakInk 代码路径与训练思路，只做短序列优先与入口配置增强。
+- A0/A1/A2/A3 命名、指标记录与 A2/A3 对 A0 的门禁规则保持不变。
+
 ## 1. 问题定义
-- 目标：将当前 PhysGraph 管线从现有数据/位姿表征迁移到 `DexYCB + 点轨迹对象表征`。
+- 目标：将当前 PhysGraph 管线聚焦到 `OakInk + 点轨迹对象表征`。
 - 约束：第一阶段只做单手，优先可训练稳定，再讨论高新颖性结构升级。
 - 核心诉求：不再以估计 6D pose 作为主表征，而是直接用稀疏点（或点轨迹）表达物体运动与目标。
 
 ## 2. 已确认事实（来自你的文档 + 当前代码）
 - 代码边界（第一阶段）：
-  - 必改：`main/dataset/*`（新增 DexYCB 适配与 factory 注册）。
+  - 必改：`main/dataset/*`（OakInk 短序列筛选与入口增强）。
   - 必改：`physgraph_envs/lib/envs/tasks/dexhandmanip_sh.py`（观测/奖励接入点轨迹）。
   - 尽量不改：`dexhandmanip_bih.py`、大规模网络重构。
 - 当前环境现状（已读代码）：
-  - `main/dataset/factory.py` 通过 index 前缀判别数据源（`oakink2/grabdemo/...`），需扩展 DexYCB 分支。
+  - `main/dataset/factory.py` 已支持 `oakink2`，可直接复用。
   - `dexhandmanip_sh.py` 的 `target` 仍以 `delta_manip_obj_pos/quat/vel` 为主，包含 `bps` 特征。
   - 现有 `compute_imitation_reward` 仍是 wrist/joints + object pose/vel + force 组合，不是点轨迹主导。
 - 实验门禁（AGENTS.md）：
@@ -20,11 +25,11 @@
 
 ## 3. 假设与关键未知
 ### 3.1 假设
-- DexYCB 字段足以支持你需要的最小数据项：手部轨迹 + 物体状态 + 图像/深度可用于点生成。
+  - OakInk 字段足以支持你需要的最小数据项：手部轨迹 + 物体状态 + 图像/深度可用于点生成。
 - 第一阶段可接受“离线生成点轨迹缓存”，而不是把视频生成/点跟踪/深度提升塞进 RL 在线循环。
 
 ### 3.2 未知（会实质影响设计）
-- DexYCB 到当前仿真坐标系的对齐复杂度（相机系/世界系/手系切换）。
+- OakInk 到当前仿真坐标系的对齐复杂度（相机系/世界系/手系切换）。
 - 点轨迹来源优先级：`mesh锚点投影` vs `RGBD重建` vs `视频预测轨迹`。
 - 锚点数 `K` 与训练稳定性/性能上限的平衡区间。
 - region/contact 奖励在你任务上的“最早可开启强度”。
@@ -44,9 +49,10 @@
   https://github.com/yzqin/dexpoint-release
 
 ## 4.2 数据与工具链可得性
-- DexYCB 官方 toolkit（含样本字段与标签结构说明）：  
+- OakInk 数据与原始工程链路（当前项目已内置）。  
+- DexYCB 官方 toolkit（作为外部对照参考）：  
   https://github.com/NVlabs/dex-ycb-toolkit
-- DexYCB 论文（CVPR 2021）：  
+- DexYCB 论文（CVPR 2021，参考）：  
   https://arxiv.org/abs/2104.04631
 - 点跟踪工具（CoTracker3，代码+模型+HF数据）：
   - https://arxiv.org/abs/2410.11831
@@ -60,13 +66,13 @@
 
 ## 4.3 成熟度判断
 - 成熟可复用：
-  - DexYCB 数据读取与标注体系；
+  - OakInk 数据读取与标注体系（当前仓库已接入）；
   - 点跟踪/深度模型工具链；
   - ManipTrans 的稳定训练主干思想。
 - 部分成熟：
   - 点轨迹直接驱动灵巧手奖励（已有 Dex4D 方向，但生态不如 pose 管线成熟）。
 - 尚无“现成一体化成熟方案”：
-  - 在 PhysGraph 结构内，把 DexYCB + 点轨迹 + 区域接触奖励整合成稳定训练闭环。
+  - 在 PhysGraph 结构内，把 OakInk + 点轨迹 + 区域接触奖励整合成稳定训练闭环。
 
 ## 5. 候选路线（3 选）
 
@@ -77,7 +83,7 @@
   - 点对经轻量编码器压成 object feature 回填。
 - 预期收益：最快验证“点表征是否优于 pose 基线”。
 - 复杂度：低。
-- 依赖：DexYCB 适配 + 点缓存 + `dexhandmanip_sh.py` 奖励替换。
+- 依赖：OakInk 短序列筛选 + 点缓存 + `dexhandmanip_sh.py` 奖励替换。
 - 失败模式：提升有限，可能只验证到“可用”而非“显著更好”。
 - 验证路径：A0→A1→A2（你的现有命名正好匹配）。
 - 新颖性潜力：中等偏低。
@@ -127,7 +133,7 @@
 - 明确闸门：仅当 A2 或 A3 稳定优于 A0，再进入 B。
 
 ## 8.2 首个原型应做什么
-- 原型：`A1_ptpos`（先不引入复杂 region/force 惩罚），打通从 DexYCB 到 `pt_pos reward` 的闭环。
+- 原型：`A1_ptpos`（先不引入复杂 region/force 惩罚），打通从 OakInk 到 `pt_pos reward` 的闭环。
 - 目标：确认训练不崩、能收敛、点误差下降趋势正常。
 
 ## 8.3 首先要测什么
@@ -154,8 +160,8 @@
 
 ### 已实现能力
 - 数据层：
-  - `d<seq>@<stage>` DexYCB 索引解析
-  - `dexycb_rh/lh` dataset adapter
+  - `<hash5>@<stage>` OakInk 索引解析
+  - OakInk 短序列筛选脚本与自动入口
   - 点轨迹字段：`obj_points_t / obj_points_target_t / obj_points_mask_t`
 - 环境层：
   - `dexhandmanip_sh.py` 支持点轨迹观测与奖励开关

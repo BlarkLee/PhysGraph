@@ -17,6 +17,7 @@ from isaacgym.torch_utils import normalize_angle, quat_conjugate, quat_mul
 import math
 from physgraph_envs.lib.envs.dexhands.factory import DexHandFactory
 from main.dataset.factory import ManipDataFactory
+from main.dataset.oakink2_shortlist import select_oakink_short_indices
 
 from main.dataset.oakink2_dataset_dexhand_rh import OakInk2DatasetDexHandRH
 from main.dataset.oakink2_dataset_dexhand_lh import OakInk2DatasetDexHandLH
@@ -91,7 +92,7 @@ class DexHandManipRHEnv(VecTask):
         self.num_dofs = None  # Total number of DOFs per env
         self.actions = None  # Current actions to be deployed
 
-        self.dataIndices = self.cfg["env"]["dataIndices"]
+        self.dataIndices = self._resolve_data_indices(self.cfg["env"].get("dataIndices", []))
         self.obs_future_length = self.cfg["env"]["obsFutureLength"]
         self.point_track_k = int(self.cfg["env"].get("pointTrackK", 32))
         self.use_point_target = bool(self.cfg["env"].get("usePointTarget", False))
@@ -207,6 +208,48 @@ class DexHandManipRHEnv(VecTask):
 
         # Refresh tensors
         self._refresh()
+
+    def _resolve_data_indices(self, data_indices):
+        indices = list(data_indices) if data_indices is not None else []
+        auto_oakink_short = bool(self.cfg["env"].get("autoOakinkShort", False))
+        auto_token = "oakink_auto_short"
+        if auto_token in indices:
+            auto_oakink_short = True
+            indices = [idx for idx in indices if idx != auto_token]
+
+        if auto_oakink_short:
+            indices = self._auto_select_oakink_shortlist()
+        if not indices:
+            raise ValueError(
+                "task.env.dataIndices is empty. Provide explicit indices (e.g. 0a1b2@0) or enable autoOakinkShort."
+            )
+        return indices
+
+    def _auto_select_oakink_shortlist(self):
+        topk = int(self.cfg["env"].get("oakinkShortTopK", 1))
+        max_frames = self.cfg["env"].get("oakinkShortMaxFrames", 180)
+        max_frames = None if max_frames is None else int(max_frames)
+        require_retargeted = bool(self.cfg["env"].get("oakinkRequireRetargeted", False))
+        data_dir = self.cfg["env"].get("oakinkDataDir", "data/OakInk-v2")
+        skip = int(self.cfg["env"].get("oakinkSkip", 2))
+        retarget_root = os.path.join("data", "retargeting", "OakInk-v2", f"mano2{str(self.dexhand)}")
+
+        selected = select_oakink_short_indices(
+            data_dir=data_dir,
+            side=self.side,
+            skip=skip,
+            topk=topk,
+            max_frames=max_frames,
+            require_retargeted=require_retargeted,
+            retarget_root=retarget_root,
+        )
+        indices = [s.index for s in selected]
+        if not indices:
+            raise RuntimeError(
+                "autoOakinkShort enabled but no candidate found. Check OakInk data path or relax shortlist constraints."
+            )
+        print(f"[OakInk shortlist] side={self.side} selected indices: {indices}")
+        return indices
 
     def create_sim(self):
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
@@ -1345,7 +1388,19 @@ class DexHandManipRHEnv(VecTask):
         return self.obs_dict, done_env_ids
 
     def step(self, actions):
-        obs, rew, done, info = super().step(actions)
+        step_result = super().step(actions)
+        if len(step_result) == 4:
+            obs, rew, done, info = step_result
+        elif len(step_result) >= 8:
+            obs, rew, done, info, diff_obj_pos, diff_obj_rot, diff_joints, diff_ft = step_result[:8]
+            info["diff_metrics"] = {
+                "diff_obj_pos": diff_obj_pos,
+                "diff_obj_rot": diff_obj_rot,
+                "diff_joints": diff_joints,
+                "diff_ft": diff_ft,
+            }
+        else:
+            raise RuntimeError(f"Unexpected VecTask.step return length: {len(step_result)}")
         info["reward_dict"] = self.reward_dict
         info["total_rewards"] = self.total_rew_buf
         info["total_steps"] = self.progress_buf

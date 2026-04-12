@@ -1,6 +1,10 @@
 # 当前代码环境基线与改造接口契约
 
-更新时间：2026-04-11
+更新时间：2026-04-12
+
+## 决策更新（2026-04-12）
+- OakInk 是原项目已适配数据集，阶段内优先沿用原有 OakInk 代码与训练思路。
+- 本轮仅新增“短序列优先”的执行能力，不重写 OakInk adapter 主流程。
 
 ## 1. 当前基线（与改造直接相关）
 
@@ -8,7 +12,8 @@
 - 文件：`main/dataset/factory.py`
 - 现状：
   - `dataset_type()` 通过 index 前缀判别数据集；
-  - 已支持 `oakink2/grabdemo/...`，未内置 DexYCB 分支。
+  - 已支持 `oakink2/grabdemo/dexycb/...`；
+  - OakInk 为当前阶段首选数据源。
 
 ## 1.2 环境层（单手主入口）
 - 文件：`physgraph_envs/lib/envs/tasks/dexhandmanip_sh.py`
@@ -26,7 +31,7 @@
 
 ## 2. 第一阶段接口契约（执行口径）
 
-## 2.1 Dataset adapter 最小返回字段（DexYCB）
+## 2.1 Dataset adapter 最小返回字段（OakInk）
 - 必需字段（训练对齐）：
   - `wrist_pos`
   - `wrist_rot`
@@ -66,13 +71,11 @@
 
 ## 3. 文件改造触点清单（第一阶段）
 - `main/dataset/factory.py`
-  - 增加 DexYCB dataset_type 分支与注册路径。
+  - 保持既有数据集路由逻辑不变。
 - `main/dataset/*`
-  - 新增 DexYCB 数据读取与缓存生成逻辑。
+  - 新增 OakInk 短序列筛选工具（`oakink2_shortlist.py`）。
 - `physgraph_envs/lib/envs/tasks/dexhandmanip_sh.py`
-  - `compute_observations()`：拼接点轨迹目标字段；
-  - `compute_reward()` 与 `compute_imitation_reward()`：接入 A1/A2/A3 奖励项；
-  - 增加回退开关（pose vs point）。
+  - 增加 OakInk 自动短序列索引解析（可被 `dataIndices` 手动覆盖）。
 
 ## 4. 验收与回归口径
 - 每轮实验至少记录：
@@ -100,9 +103,9 @@
 ## 当前执行版（Execution Version）
 
 ### 已落地接口变更
-- DexYCB 索引：`d<seq>@<stage>`
-- 新增 dataset：`dexycb_rh/lh`
-- 新增点轨迹字段：`obj_points_t / obj_points_target_t / obj_points_mask_t`
+- OakInk 索引：`<hash5>@<stage>`
+- 新增短序列筛选：`python main/dataset/oakink2_shortlist.py`
+- 自动短序列入口：`autoOakinkShort` + `oakinkShortTopK/oakinkShortMaxFrames`
 - 单手链路：
   - `ResDexHandRH` / `ResDexHandLH`
   - `res_rh_*` / `res_lh_*` 训练注册
