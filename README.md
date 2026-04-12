@@ -131,31 +131,53 @@ We follow the prerequisit of [ManipTrans](https://maniptrans.github.io/) to prep
 
 ## ▶️ Usage
 <a id="usage"></a>
-### BiManual Tool-Use Policies
+### Stage-1 OakInk-Only (Single-Hand)
 
-1. **Preprocessing**
-
-    Preprocess data for both hands:
+1. **Optional: shortlist short OakInk segments**
     ```bash
-    # for Artimano Hand
-    python main/dataset/mano2dexhand.py --data_idx 083f7@0 --side right --dexhand artimano --headless --iter 7000
-    python main/dataset/mano2dexhand.py --data_idx 083f7@0 --side left --dexhand artimano --headless --iter 7000
-    # for other hands, just replace `Artimano` with the corresponding hand name. Candidate hand names are `Shadow`, `Inspire`, `Allegro`. 
+    python main/dataset/oakink2_shortlist.py --side right --topk 8 --max-frames 180
     ```
-    Regarding `data_idx` of OakInk V2, for example, `083f7@0` refers to the primitive task indexed at `0` in the sequence labeled `scene_01__A001++seq__083f7a577484ba7929a9__2023-04-27-19-25-24` (for simplification, we only use the first 5 digits of the hash code).
+    OakInk index format is `<hash5>@<stage>`, for example: `083f7@0`.
 
-2. **Training**
-  Train bi-manual policies:
+2. **Retargeting (single hand)**
     ```bash
-    python main/rl/train.py task=ResDexHand dexhand=artimano side=BiH headless=true num_envs=4096 learning_rate=2e-4 test=false randomStateInit=true dataIndices=[083f7@0] early_stop_epochs=10000 actionsMovingAverage=0.4 experiment=083f7@0_artimano
+    python main/dataset/mano2dexhand.py --data_idx 083f7@0 --side right --dexhand inspire --headless --iter 7000
     ```
-    The `early_stop_epochs` parameter can be adjusted based on the task complexity.
+    If you want to run LH experiments, switch `--side left`.
 
-3. **Test**
-  Test the bi-manual policy:
+3. **A0-A3 minimal matrix commands (OakInk-only)**
     ```bash
-    python main/rl/train.py task=ResDexHand dexhand=artimano side=BiH headless=false num_envs=4 learning_rate=2e-4 test=true randomStateInit=false dataIndices=[083f7@0] actionsMovingAverage=0.4 checkpoint=runs/083f7@0_artimano__xxxxxx/nn/083f7@0_artimano.pth
+    # A0
+    python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=A0_pose_baseline_s42 dataIndices=[oakink_auto_short] auto_oakink_short=True oakink_short_topk=1 oakink_short_max_frames=180 oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=False task.env.usePtFlow=False task.env.useRegionGeom=False task.env.poseFallback=True
+
+    # A1
+    python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=A1_ptpos_s42 dataIndices=[oakink_auto_short] auto_oakink_short=True oakink_short_topk=1 oakink_short_max_frames=180 oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=True task.env.usePtFlow=False task.env.useRegionGeom=False task.env.poseFallback=True
+
+    # A2
+    python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=A2_ptpos_ptflow_s42 dataIndices=[oakink_auto_short] auto_oakink_short=True oakink_short_topk=1 oakink_short_max_frames=180 oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=True task.env.usePtFlow=True task.env.useRegionGeom=False task.env.poseFallback=True
+
+    # A3
+    python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=A3_ptpos_ptflow_region_geom_s42 dataIndices=[oakink_auto_short] auto_oakink_short=True oakink_short_topk=1 oakink_short_max_frames=180 oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=True task.env.usePtFlow=True task.env.useRegionGeom=True task.env.poseFallback=True
     ```
+
+4. **Batch run script**
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File main/rl/run_a0_a3_oakink.ps1 -Mode gate
+    ```
+    This script runs A0-A3 with a seed set and shared OakInk-only overrides, then auto-generates:
+    - `runs/analysis/a0_a3_run_metrics.csv`
+    - `runs/analysis/a0_a3_group_summary.csv`
+    - `runs/analysis/a0_a3_gate_decision.csv`
+    - `runs/analysis/a0_a3_summary.md`
+
+5. **Summary-only (after training)**
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File main/rl/run_a0_a3_oakink.ps1 -Mode gate -SkipTrain
+    ```
+
+6. **Result templates (CSV/Markdown)**
+    - `docs/templates/a0_a3_results_template.csv`
+    - `docs/templates/a0_a3_results_template.md`
 ---
 
 

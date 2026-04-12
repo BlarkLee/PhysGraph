@@ -1,0 +1,13 @@
+group,seed,experiment,status,success_rate,fail_rate,reward,err_trans_et,err_rot_er,err_joint_ej,err_ft_eft,nan_inf_count,numeric_anomaly_rate,notes
+A0_pose_baseline,42,A0_pose_baseline_s42,pending,,,,,,,,,,
+A0_pose_baseline,142,A0_pose_baseline_s142,pending,,,,,,,,,,
+A0_pose_baseline,242,A0_pose_baseline_s242,pending,,,,,,,,,,
+A1_ptpos,42,A1_ptpos_s42,pending,,,,,,,,,,
+A1_ptpos,142,A1_ptpos_s142,pending,,,,,,,,,,
+A1_ptpos,242,A1_ptpos_s242,pending,,,,,,,,,,
+A2_ptpos_ptflow,42,A2_ptpos_ptflow_s42,pending,,,,,,,,,,
+A2_ptpos_ptflow,142,A2_ptpos_ptflow_s142,pending,,,,,,,,,,
+A2_ptpos_ptflow,242,A2_ptpos_ptflow_s242,pending,,,,,,,,,,
+A3_ptpos_ptflow_region_geom,42,A3_ptpos_ptflow_region_geom_s42,pending,,,,,,,,,,
+A3_ptpos_ptflow_region_geom,142,A3_ptpos_ptflow_region_geom_s142,pending,,,,,,,,,,
+A3_ptpos_ptflow_region_geom,242,A3_ptpos_ptflow_region_geom_s242,pending,,,,,,,,,,

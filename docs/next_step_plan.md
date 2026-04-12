@@ -3,7 +3,8 @@
 更新时间：2026-04-12
 
 ## 变更说明（2026-04-12）
-- 阶段主线由 `DexYCB` 回切到 `OakInk`。
+- 阶段数据集主线锁定为 `OakInk`（第一阶段唯一数据集）。
+- `DexYCB` 路径从第一阶段执行计划中移除，不再作为实验输入或对照来源。
 - 执行原则改为：复用原项目 OakInk 数据链路与奖励主干，仅做短序列优先与入口配置增强。
 - A0-A3 命名与门禁规则不变。
 
@@ -11,6 +12,11 @@
 - 主线：先 `A 方案`（单 object token + 点轨迹奖励），稳定后再进 `B 方案`。
 - 范围：第一阶段仅单手（`dexhandmanip_sh.py`）。
 - 闸门：仅当 `A2` 或 `A3` 稳定优于 `A0`，才进入 anchor token 扩展。
+
+## 0.1 当前阶段目标（OakInk-only）
+- 目标：在 `OakInk` 短序列上验证 `A0->A1->A2->A3` 的稳定闭环与效果趋势。
+- 关注点：优先保证可训练、可复现、可解释，不引入跨数据集变量。
+- 相比旧口径的变化：不再并行维护 DexYCB 路径，减少“数据语义差异”对阶段结论的干扰。
 
 ## 1. 里程碑总览
 | 里程碑 | 目标 | 预计时长 | 主要改动 | 产出 | 通过标准 |
@@ -105,9 +111,40 @@
 4. 跑 `A3_ptpos_ptflow_region_geom`。
 5. 产出 go/no-go。
 
+### A0-A3 最小实验矩阵（OakInk-only）
+| 维度 | 设定 |
+|---|---|
+| 数据集 | OakInk-V2（唯一） |
+| 侧别 | RH（主矩阵），LH 可选复核 |
+| 短序列策略 | `dataIndices=[oakink_auto_short]`, `oakink_short_topk=1`, `oakink_short_max_frames=180` |
+| 训练资源 | `num_envs=512`, `headless=true` |
+| 训练步数 | `max_iterations=1200`, `early_stop_epochs=1200` |
+| seeds | `42`, `142`, `242` |
+| 实验组 | `A0_pose_baseline`, `A1_ptpos`, `A2_ptpos_ptflow`, `A3_ptpos_ptflow_region_geom` |
+| 总运行数 | 12（4 组 x 3 seeds） |
+
+### 记录字段（每次运行最少）
+1. 元信息：`experiment`、`seed`、`side`、`dexhand`、`oakink_short_*`、代码提交号。
+2. 结果指标：成功率、失败率、episode 平均 reward、收敛轮次。
+3. 点相关：`reward_pt_pos`、`reward_pt_flow`、`reward_region_geom`（未开启时记录为 0）。
+4. 稳定性：`error_buf` 比例、NaN/Inf 发生次数、速度/力异常率（若日志可得）。
+5. 对照结论：相对 A0 的均值差、方差、是否满足门禁（A2/A3 稳定优于 A0）。
+
+### 目的（为什么要跑最小矩阵）
+- 不是追求单次最高分，而是验证“点轨迹路线在同一数据域内是否稳定优于 pose baseline”。
+- 用 3 seeds 控制随机性，避免单 seed 偶然结果导致错误路线决策。
+- 为是否进入方案 B（anchor tokens）提供可复现、可审计的门禁证据。
+
 ### 示例命令
-- 短序列筛选：`python main/dataset/oakink2_shortlist.py --side right --topk 8 --max-frames 180`
-- A0: `python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH experiment=A0_pose_baseline task.env.usePointTarget=False`
-- A1: `python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH experiment=A1_ptpos task.env.usePointTarget=True task.env.usePtFlow=False task.env.useRegionGeom=False task.env.poseFallback=True`
-- A2: `python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH experiment=A2_ptpos_ptflow task.env.usePointTarget=True task.env.usePtFlow=True task.env.useRegionGeom=False task.env.poseFallback=True`
-- A3: `python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH experiment=A3_ptpos_ptflow_region_geom task.env.usePointTarget=True task.env.usePtFlow=True task.env.useRegionGeom=True task.env.poseFallback=True`
+1. 短序列筛选：`python main/dataset/oakink2_shortlist.py --side right --topk 8 --max-frames 180`
+2. 单次模板（A2 示例）：`python main/rl/train.py task=ResDexHand rl_train=ResDexHandPPO side=RH dexhand=inspire headless=true test=false num_envs=512 max_iterations=1200 early_stop_epochs=1200 seed=42 experiment=A2_ptpos_ptflow_s42 dataIndices=[oakink_auto_short] auto_oakink_short=True oakink_short_topk=1 oakink_short_max_frames=180 oakink_data_dir=data/OakInk-v2 oakink_skip=2 task.env.usePointTarget=True task.env.usePtFlow=True task.env.useRegionGeom=False task.env.poseFallback=True`
+3. 批量脚本：`powershell -ExecutionPolicy Bypass -File main/rl/run_a0_a3_oakink.ps1 -Mode gate`
+4. 汇总脚本（仅汇总，不重复训练）：`powershell -ExecutionPolicy Bypass -File main/rl/run_a0_a3_oakink.ps1 -Mode gate -SkipTrain`
+5. 自动产出门禁文件：
+   - `runs/analysis/a0_a3_run_metrics.csv`
+   - `runs/analysis/a0_a3_group_summary.csv`
+   - `runs/analysis/a0_a3_gate_decision.csv`
+   - `runs/analysis/a0_a3_summary.md`
+6. 手工模板：
+   - `docs/templates/a0_a3_results_template.csv`
+   - `docs/templates/a0_a3_results_template.md`

@@ -1,7 +1,8 @@
 # PhysGraph 改造研究方向（2026-04-11）
 
 ## 0. 决策更新（2026-04-12）
-- 数据集路线调整：第一阶段从 DexYCB 回切到 OakInk（原项目已适配）。
+- 数据集路线调整：第一阶段数据集锁定为 OakInk（唯一执行数据源）。
+- DexYCB 从第一阶段执行面移除，不再纳入实验输入与对照结论。
 - 执行原则：优先复用原 OakInk 代码路径与训练思路，只做短序列优先与入口配置增强。
 - A0/A1/A2/A3 命名、指标记录与 A2/A3 对 A0 的门禁规则保持不变。
 
@@ -50,10 +51,6 @@
 
 ## 4.2 数据与工具链可得性
 - OakInk 数据与原始工程链路（当前项目已内置）。  
-- DexYCB 官方 toolkit（作为外部对照参考）：  
-  https://github.com/NVlabs/dex-ycb-toolkit
-- DexYCB 论文（CVPR 2021，参考）：  
-  https://arxiv.org/abs/2104.04631
 - 点跟踪工具（CoTracker3，代码+模型+HF数据）：
   - https://arxiv.org/abs/2410.11831
   - https://github.com/facebookresearch/co-tracker
@@ -73,6 +70,10 @@
   - 点轨迹直接驱动灵巧手奖励（已有 Dex4D 方向，但生态不如 pose 管线成熟）。
 - 尚无“现成一体化成熟方案”：
   - 在 PhysGraph 结构内，把 OakInk + 点轨迹 + 区域接触奖励整合成稳定训练闭环。
+
+## 4.4 执行边界（补充）
+- 第一阶段所有训练与评估仅基于 OakInk。
+- 任何 DexYCB 相关脚本、适配器或缓存不作为本阶段里程碑交付要求。
 
 ## 5. 候选路线（3 选）
 

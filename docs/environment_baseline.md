@@ -4,6 +4,7 @@
 
 ## 决策更新（2026-04-12）
 - OakInk 是原项目已适配数据集，阶段内优先沿用原有 OakInk 代码与训练思路。
+- 第一阶段执行口径锁定为 OakInk-only：`DexYCB` 不再进入阶段实验输入与对照结论。
 - 本轮仅新增“短序列优先”的执行能力，不重写 OakInk adapter 主流程。
 
 ## 1. 当前基线（与改造直接相关）
@@ -12,8 +13,8 @@
 - 文件：`main/dataset/factory.py`
 - 现状：
   - `dataset_type()` 通过 index 前缀判别数据集；
-  - 已支持 `oakink2/grabdemo/dexycb/...`；
-  - OakInk 为当前阶段首选数据源。
+  - 代码层已支持 `oakink2/grabdemo/dexycb/...`；
+  - 执行层第一阶段仅使用 `oakink2` 索引与对应数据目录。
 
 ## 1.2 环境层（单手主入口）
 - 文件：`physgraph_envs/lib/envs/tasks/dexhandmanip_sh.py`
@@ -25,6 +26,8 @@
 - 第一阶段只改：
   - `main/dataset/*`
   - `dexhandmanip_sh.py`
+- 第一阶段数据范围：
+  - 仅 OakInk（短序列优先）；不引入 DexYCB 数据链路作为阶段输入。
 - 第一阶段尽量不改：
   - `dexhandmanip_bih.py`
   - 大规模图结构重构。
