@@ -173,11 +173,8 @@ class DexHandManipBiHEnv(VecTask):
             )
             * self.obs_future_length
         )
-        if self.use_point_target:
-            point_obs_dim = self.point_track_k * 3 + self.point_track_k
-            if self.use_pt_flow:
-                point_obs_dim += self.point_track_k * 3
-            target_obs_dim_side += point_obs_dim * self.obs_future_length
+        # Keep BiH target observation width fixed to the legacy encoder contract.
+        # Point-track terms are applied in reward shaping, not appended to `target`.
         TARGET_OBS_DIM = target_obs_dim_side * 2
         self.obs_dict.update(
             {
@@ -1485,27 +1482,6 @@ class DexHandManipBiHEnv(VecTask):
             "gt_tips_distance",
             "bps",
         ]
-        if self.use_point_target and "obj_points_target_t" in side_demo_data:
-            target_points = indicing(side_demo_data["obj_points_target_t"], cur_idx).reshape(
-                nE, nF, self.point_track_k, 3
-            )
-            current_points = self._compose_current_obj_points(side=side, num_future=nF)
-            point_mask = indicing(side_demo_data["obj_points_mask_t"], cur_idx).reshape(nE, nF, self.point_track_k)
-            next_target_state["delta_obj_points"] = (
-                (target_points - current_points) * point_mask.unsqueeze(-1)
-            ).reshape(nE, -1)
-            next_target_state["obj_points_mask"] = point_mask.reshape(nE, -1)
-            target_concat_keys.extend(["delta_obj_points", "obj_points_mask"])
-
-            if self.use_pt_flow:
-                source_points = indicing(side_demo_data["obj_points_t"], cur_idx).reshape(nE, nF, self.point_track_k, 3)
-                target_flow = target_points - source_points
-                current_flow = current_points - source_points
-                next_target_state["delta_obj_points_flow"] = (
-                    (target_flow - current_flow) * point_mask.unsqueeze(-1)
-                ).reshape(nE, -1)
-                target_concat_keys.append("delta_obj_points_flow")
-
         obs_dict["target"] = torch.cat(
             [
                 next_target_state[ob]
