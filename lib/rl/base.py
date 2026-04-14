@@ -1494,9 +1494,14 @@ class MyContinuousA2CBase(MyA2CBase):
 
                 if epoch_num >= self.early_stop_epochs:
                     slope_early_stop = True
+                    history_len = len(self.reward_history)
                     for horizon in [8, 32, 64]:  # short term, mid term, long term trend
+                        if history_len < horizon:
+                            slope_early_stop = False
+                            break
+                        recent_rewards = self.reward_history[-horizon:]
                         slope, _, _, _, _ = linregress(
-                            np.arange(horizon), self.reward_history[epoch_num - horizon : epoch_num]
+                            np.arange(horizon), recent_rewards
                         )
                         if slope > 1e-4:
                             slope_early_stop = False
