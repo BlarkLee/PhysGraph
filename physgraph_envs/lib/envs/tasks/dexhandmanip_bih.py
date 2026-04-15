@@ -781,7 +781,7 @@ class DexHandManipBiHEnv(VecTask):
                         ],
                         dim=0,
                     )
-            return torch.stack(stack_data).squeeze()
+            return torch.stack(stack_data)
 
         for k in data[0].keys():
             if k == "mano_joints" or k == "mano_joints_velocity":
@@ -815,7 +815,7 @@ class DexHandManipBiHEnv(VecTask):
                 if k != "obj_verts":
                     packed_data[k] = fill_data(stack_data)
                 else:
-                    packed_data[k] = torch.stack(stack_data).squeeze()
+                    packed_data[k] = torch.stack(stack_data)
             elif type(data[0][k]) == np.ndarray:
                 raise RuntimeError("Using np is very slow.")
             else:
