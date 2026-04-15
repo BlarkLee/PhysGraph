@@ -23,6 +23,10 @@ GROUP_FLAGS = {
 }
 
 
+def maybe_num(value, missing=-math.inf):
+    return value if value is not None else missing
+
+
 def parse_number(token):
     if token is None:
         return None
@@ -69,14 +73,25 @@ def pick_representative_ckpt(ckpt_metrics):
     if not ckpt_metrics:
         return None
 
+    # Prefer terminal checkpoints: highest epoch, then quality tie-breakers.
+    with_epoch = [x for x in ckpt_metrics if x["epoch"] is not None]
+    if with_epoch:
+        return max(
+            with_epoch,
+            key=lambda x: (
+                x["epoch"],
+                maybe_num(x["success_rate"]),
+                maybe_num(x["reward"]),
+            ),
+        )
+
     with_sr = [x for x in ckpt_metrics if x["success_rate"] is not None]
     if with_sr:
         return max(
             with_sr,
             key=lambda x: (
                 x["success_rate"],
-                x["reward"] if x["reward"] is not None else -math.inf,
-                x["epoch"] if x["epoch"] is not None else -1,
+                maybe_num(x["reward"]),
             ),
         )
 
@@ -91,6 +106,48 @@ def pick_representative_ckpt(ckpt_metrics):
         )
 
     return sorted(ckpt_metrics, key=lambda x: x["checkpoint_name"])[-1]
+
+
+def pick_best_run(matches):
+    best = None
+    for run_dir in matches:
+        nn_dir = run_dir / "nn"
+        ckpts = []
+        if nn_dir.exists():
+            ckpts.extend(nn_dir.glob("*.pth"))
+            if not ckpts:
+                ckpts.extend([p for p in nn_dir.iterdir() if p.is_file()])
+        parsed = [extract_ckpt_metrics(p) for p in ckpts]
+        chosen = pick_representative_ckpt(parsed)
+        if chosen is None:
+            continue
+        candidate = {
+            "run_dir": run_dir,
+            "chosen": chosen,
+            "score": (
+                maybe_num(chosen["epoch"], -1),
+                maybe_num(chosen["success_rate"]),
+                maybe_num(chosen["reward"]),
+                run_dir.stat().st_mtime,
+            ),
+        }
+        if best is None or candidate["score"] > best["score"]:
+            best = candidate
+    return best
+
+
+def infer_gate_groups(groups):
+    if "A0_pose_baseline" in groups:
+        baseline = "A0_pose_baseline"
+        candidates = [g for g in ("A2_ptpos_ptflow", "A3_ptpos_ptflow_region_geom") if g in groups]
+        return baseline, candidates
+    if "BiH_B0_hand_base_only_nopose" in groups:
+        baseline = "BiH_B0_hand_base_only_nopose"
+        candidates = [g for g in ("BiH_B2_ptpos_ptflow_nopose", "BiH_B3_ptpos_ptflow_region_nopose") if g in groups]
+        return baseline, candidates
+    if not groups:
+        return None, []
+    return groups[0], groups[1:]
 
 
 def list_candidate_runs(runs_root):
@@ -153,15 +210,19 @@ def summarize_group(rows):
     }
 
 
-def decide_gate(group_stats, sr_margin, fr_margin, max_std_sr):
-    if "A0_pose_baseline" not in group_stats:
-        return ("PENDING", "Missing A0 baseline summary.")
+def decide_gate(group_stats, baseline_group, candidate_groups, sr_margin, fr_margin, max_std_sr):
+    if baseline_group is None:
+        return ("PENDING", "No groups provided for gate.")
+    if baseline_group not in group_stats:
+        return ("PENDING", f"Missing baseline summary: {baseline_group}.")
 
-    a0 = group_stats["A0_pose_baseline"]
-    if a0["runs_valid"] == 0:
-        return ("PENDING", "A0 has no valid runs with success_rate.")
+    baseline = group_stats[baseline_group]
+    if baseline["runs_valid"] == 0:
+        return ("PENDING", f"{baseline_group} has no valid runs with success_rate.")
+    if not candidate_groups:
+        return ("PENDING", "No candidate groups configured for gate.")
 
-    for g in ("A2_ptpos_ptflow", "A3_ptpos_ptflow_region_geom"):
+    for g in candidate_groups:
         if g not in group_stats:
             continue
         st = group_stats[g]
@@ -169,38 +230,42 @@ def decide_gate(group_stats, sr_margin, fr_margin, max_std_sr):
             continue
         if st["mean_success_rate"] is None or st["mean_fail_rate"] is None:
             continue
-        if a0["mean_fail_rate"] is None:
+        if baseline["mean_fail_rate"] is None:
             continue
 
         stable = (st["std_success_rate"] or 0.0) <= max_std_sr
-        better = st["mean_success_rate"] >= a0["mean_success_rate"] + sr_margin
-        not_worse_fail = st["mean_fail_rate"] <= a0["mean_fail_rate"] + fr_margin
+        better = st["mean_success_rate"] >= baseline["mean_success_rate"] + sr_margin
+        not_worse_fail = st["mean_fail_rate"] <= baseline["mean_fail_rate"] + fr_margin
 
         if stable and better and not_worse_fail:
             reason = (
                 f"{g} passes gate: mean_sr={st['mean_success_rate']:.4f} "
-                f"(A0={a0['mean_success_rate']:.4f}), std_sr={st['std_success_rate']:.4f}, "
-                f"mean_fr={st['mean_fail_rate']:.4f} (A0={a0['mean_fail_rate']:.4f})."
+                f"({baseline_group}={baseline['mean_success_rate']:.4f}), std_sr={st['std_success_rate']:.4f}, "
+                f"mean_fr={st['mean_fail_rate']:.4f} ({baseline_group}={baseline['mean_fail_rate']:.4f})."
             )
-            return ("GO", reason)
+            return ("PASS", reason)
 
     reason = (
-        "Neither A2 nor A3 satisfies gate. "
-        f"Rule: mean_sr >= A0 + {sr_margin}, mean_fr <= A0 + {fr_margin}, std_sr <= {max_std_sr}."
+        f"No candidate satisfies gate against {baseline_group}. "
+        f"Rule: mean_sr >= {baseline_group} + {sr_margin}, "
+        f"mean_fr <= {baseline_group} + {fr_margin}, std_sr <= {max_std_sr}."
     )
-    return ("NO_GO", reason)
+    return ("FAIL", reason)
 
 
-def write_markdown(path, run_rows, summary_rows, gate_status, gate_reason, args):
+def write_markdown(path, run_rows, summary_rows, gate_status, gate_reason, args, baseline_group):
     path.parent.mkdir(parents=True, exist_ok=True)
     now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with path.open("w", encoding="utf-8", newline="\n") as f:
-        f.write("# A0-A3 Result Summary (OakInk-only)\n")
+        f.write("# Experiment Result Summary (OakInk-only)\n")
         f.write(f"- Generated at: {now}\n")
         f.write(f"- Runs root: `{args.runs_root}`\n")
         f.write(f"- Seeds: `{','.join(str(s) for s in args.seeds)}`\n")
         f.write(
-            f"- Gate rule: `mean_sr >= A0+{args.sr_margin}`, `mean_fr <= A0+{args.fr_margin}`, "
+            f"- Gate baseline: `{baseline_group}`\n"
+        )
+        f.write(
+            f"- Gate rule: `mean_sr >= baseline+{args.sr_margin}`, `mean_fr <= baseline+{args.fr_margin}`, "
             f"`std_sr <= {args.max_std_sr}`\n\n"
         )
 
@@ -287,21 +352,14 @@ def main():
             }
 
             if matches:
-                run_dir = matches[0]
-                row["run_dir"] = run_dir.as_posix()
-                row["status"] = "missing_checkpoint"
-                nn_dir = run_dir / "nn"
-                ckpts = []
-                if nn_dir.exists():
-                    ckpts.extend(nn_dir.glob("*.pth"))
-                    if not ckpts:
-                        ckpts.extend([p for p in nn_dir.iterdir() if p.is_file()])
-
-                parsed = [extract_ckpt_metrics(p) for p in ckpts]
-                chosen = pick_representative_ckpt(parsed)
-                if chosen:
-                    row.update(chosen)
+                best_run = pick_best_run(matches)
+                if best_run:
+                    row["run_dir"] = best_run["run_dir"].as_posix()
+                    row.update(best_run["chosen"])
                     row["status"] = "ok"
+                else:
+                    row["run_dir"] = matches[0].as_posix()
+                    row["status"] = "missing_checkpoint"
 
             run_rows.append(row)
             group_to_rows[group].append(row)
@@ -355,7 +413,10 @@ def main():
     summary_csv_path = analysis_dir / "a0_a3_group_summary.csv"
     write_csv(summary_csv_path, summary_csv_fields, summary_rows)
 
-    gate_status, gate_reason = decide_gate(group_stats, args.sr_margin, args.fr_margin, args.max_std_sr)
+    baseline_group, candidate_groups = infer_gate_groups(args.groups)
+    gate_status, gate_reason = decide_gate(
+        group_stats, baseline_group, candidate_groups, args.sr_margin, args.fr_margin, args.max_std_sr
+    )
     gate_csv_path = analysis_dir / "a0_a3_gate_decision.csv"
     write_csv(
         gate_csv_path,
@@ -365,6 +426,8 @@ def main():
             "sr_margin",
             "fr_margin",
             "max_std_sr",
+            "baseline_group",
+            "candidate_groups",
             "generated_at",
         ],
         [
@@ -374,13 +437,15 @@ def main():
                 "sr_margin": args.sr_margin,
                 "fr_margin": args.fr_margin,
                 "max_std_sr": args.max_std_sr,
+                "baseline_group": baseline_group or "",
+                "candidate_groups": ",".join(candidate_groups),
                 "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
             }
         ],
     )
 
     md_path = analysis_dir / "a0_a3_summary.md"
-    write_markdown(md_path, run_rows, summary_rows, gate_status, gate_reason, args)
+    write_markdown(md_path, run_rows, summary_rows, gate_status, gate_reason, args, baseline_group)
 
     print(f"[summary] run-level csv: {run_csv_path.as_posix()}")
     print(f"[summary] group csv: {summary_csv_path.as_posix()}")
