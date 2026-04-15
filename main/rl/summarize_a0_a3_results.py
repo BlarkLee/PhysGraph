@@ -43,8 +43,13 @@ def extract_ckpt_metrics(path):
     name = path.stem
 
     def get(tag):
-        m = re.search(rf"_{tag}_([^_]+)", name)
-        return parse_number(m.group(1)) if m else None
+        # Robust to names like `_rew__668.94__sr_...` and `_Et_[3.12]_...`.
+        marker = f"_{tag}_"
+        i = name.find(marker)
+        if i < 0:
+            return None
+        tail = name[i + len(marker) :]
+        return parse_number(tail)
 
     ep = get("ep")
     sr = get("sr")
@@ -67,6 +72,44 @@ def extract_ckpt_metrics(path):
         "err_joint_ej": ej,
         "err_ft_eft": eft,
     }
+
+
+def has_error_terms(item):
+    return any(
+        item.get(k) is not None
+        for k in ("err_trans_et", "err_rot_er", "err_joint_ej", "err_ft_eft")
+    )
+
+
+def backfill_error_metrics(chosen, ckpt_metrics):
+    if chosen is None:
+        return None
+    if has_error_terms(chosen):
+        return chosen
+    candidates = [x for x in ckpt_metrics if has_error_terms(x)]
+    if not candidates:
+        return chosen
+
+    chosen_epoch = chosen.get("epoch")
+    if chosen_epoch is not None:
+        # Prefer nearest checkpoint not after chosen epoch; fallback to nearest by absolute distance.
+        before = [x for x in candidates if x.get("epoch") is not None and x["epoch"] <= chosen_epoch]
+        if before:
+            source = max(before, key=lambda x: x["epoch"])
+        else:
+            source = min(
+                candidates,
+                key=lambda x: abs((x.get("epoch") if x.get("epoch") is not None else -1) - chosen_epoch),
+            )
+    else:
+        # No epoch info on chosen; use latest candidate with error terms.
+        source = max(candidates, key=lambda x: maybe_num(x.get("epoch"), -1))
+
+    out = dict(chosen)
+    for k in ("err_trans_et", "err_rot_er", "err_joint_ej", "err_ft_eft"):
+        if out.get(k) is None:
+            out[k] = source.get(k)
+    return out
 
 
 def pick_representative_ckpt(ckpt_metrics):
@@ -121,6 +164,7 @@ def pick_best_run(matches):
         chosen = pick_representative_ckpt(parsed)
         if chosen is None:
             continue
+        chosen = backfill_error_metrics(chosen, parsed)
         candidate = {
             "run_dir": run_dir,
             "chosen": chosen,
