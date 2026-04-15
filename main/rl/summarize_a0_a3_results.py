@@ -231,6 +231,9 @@ def summarize_group(rows):
     fr = [r["fail_rate"] for r in valid if r["fail_rate"] is not None]
     rw = [r["reward"] for r in valid if r["reward"] is not None]
     et = [r["err_trans_et"] for r in valid if r["err_trans_et"] is not None]
+    er = [r["err_rot_er"] for r in valid if r["err_rot_er"] is not None]
+    ej = [r["err_joint_ej"] for r in valid if r["err_joint_ej"] is not None]
+    eft = [r["err_ft_eft"] for r in valid if r["err_ft_eft"] is not None]
     nan_inf = [r["nan_inf_count"] for r in valid if r["nan_inf_count"] is not None]
 
     def smean(values):
@@ -250,6 +253,12 @@ def summarize_group(rows):
         "std_reward": sstd(rw),
         "mean_err_trans_et": smean(et),
         "std_err_trans_et": sstd(et),
+        "mean_err_rot_er": smean(er),
+        "std_err_rot_er": sstd(er),
+        "mean_err_joint_ej": smean(ej),
+        "std_err_joint_ej": sstd(ej),
+        "mean_err_ft_eft": smean(eft),
+        "std_err_ft_eft": sstd(eft),
         "sum_nan_inf_count": int(sum(nan_inf)) if nan_inf else 0,
     }
 
@@ -318,13 +327,16 @@ def write_markdown(path, run_rows, summary_rows, gate_status, gate_reason, args,
         f.write(f"- Reason: {gate_reason}\n\n")
 
         f.write("## Group Summary\n")
-        f.write("| group | expected | valid | mean_sr | std_sr | mean_fr | mean_reward | mean_Et | nan_inf_total |\n")
-        f.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+        f.write(
+            "| group | expected | valid | mean_sr | std_sr | mean_fr | mean_reward | mean_Et | mean_Er | mean_Ej | mean_Eft | nan_inf_total |\n"
+        )
+        f.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
         for r in summary_rows:
             f.write(
                 f"| {r['group']} | {r['runs_expected']} | {r['runs_valid']} | {fmt(r['mean_success_rate'], 4)} "
                 f"| {fmt(r['std_success_rate'], 4)} | {fmt(r['mean_fail_rate'], 4)} "
-                f"| {fmt(r['mean_reward'], 4)} | {fmt(r['mean_err_trans_et'], 4)} | {r['sum_nan_inf_count']} |\n"
+                f"| {fmt(r['mean_reward'], 4)} | {fmt(r['mean_err_trans_et'], 4)} | {fmt(r['mean_err_rot_er'], 4)} "
+                f"| {fmt(r['mean_err_joint_ej'], 4)} | {fmt(r['mean_err_ft_eft'], 4)} | {r['sum_nan_inf_count']} |\n"
             )
         f.write("\n")
 
@@ -452,6 +464,12 @@ def main():
         "std_reward",
         "mean_err_trans_et",
         "std_err_trans_et",
+        "mean_err_rot_er",
+        "std_err_rot_er",
+        "mean_err_joint_ej",
+        "std_err_joint_ej",
+        "mean_err_ft_eft",
+        "std_err_ft_eft",
         "sum_nan_inf_count",
     ]
     summary_csv_path = analysis_dir / "a0_a3_group_summary.csv"
