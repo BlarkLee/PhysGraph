@@ -430,6 +430,10 @@ class MyBasePlayer(object):
 
         cr = torch.zeros(batch_size, dtype=torch.float32)
         steps = torch.zeros(batch_size, dtype=torch.float32)
+        done_envs_total = 0
+        success_total = 0
+        failure_total = 0
+        strict_success_total = 0
 
         done = None
 
@@ -531,6 +535,26 @@ class MyBasePlayer(object):
             done_count = len(done_indices)
 
             if done_count > 0:
+                done_indices_flat = done_indices.flatten()
+                success_count = 0
+                failure_count = 0
+                strict_success_count = 0
+                if hasattr(self.env, "success_buf"):
+                    success_count = int(self.env.success_buf[done_indices_flat].sum().item())
+                if hasattr(self.env, "failure_buf"):
+                    failure_count = int(self.env.failure_buf[done_indices_flat].sum().item())
+                if hasattr(self.env, "strict_success_buf"):
+                    strict_success_count = int(self.env.strict_success_buf[done_indices_flat].sum().item())
+                else:
+                    strict_success_count = success_count
+
+                done_envs_total += done_count
+                success_total += success_count
+                failure_total += failure_count
+                strict_success_total += strict_success_count
+                strict_success_rate = strict_success_count / max(done_count, 1)
+                strict_success_rate_total = strict_success_total / max(done_envs_total, 1)
+
                 if self.is_rnn:
                     for s in self.states:
                         s[:, all_done_indices, :] = s[:, all_done_indices, :] * 0.0
@@ -547,6 +571,20 @@ class MyBasePlayer(object):
                     cur_rewards_done = cur_rewards / done_count
                     cur_steps_done = cur_steps / done_count
                     print(f"reward: {cur_rewards_done:.2f} steps: {cur_steps_done:.1f}")
+                print(
+                    "[eval_stats] "
+                    f"done_count={done_count} "
+                    f"done_envs={done_count} "
+                    f"success_count={success_count} "
+                    f"failure_count={failure_count} "
+                    f"strict_success_count={strict_success_count} "
+                    f"strict_success_rate={strict_success_rate:.6f} "
+                    f"done_envs_total={done_envs_total} "
+                    f"success_total={success_total} "
+                    f"failure_total={failure_total} "
+                    f"strict_success_total={strict_success_total} "
+                    f"strict_success_rate_total={strict_success_rate_total:.6f}"
+                )
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape
