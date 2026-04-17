@@ -314,6 +314,24 @@ class RLGPUEnv(vecenv.IVecEnv):
         if hasattr(self.env, "set_env_state"):
             self.env.set_env_state(env_state)
 
+    @property
+    def success_buf(self):
+        return self.env.success_buf
+
+    @property
+    def failure_buf(self):
+        return self.env.failure_buf
+
+    @property
+    def error_buf(self):
+        return self.env.error_buf
+
+    @property
+    def strict_success_buf(self):
+        if hasattr(self.env, "strict_success_buf"):
+            return self.env.strict_success_buf
+        return self.env.success_buf
+
 
 class ComplexObsRLGPUEnv(vecenv.IVecEnv):
     def __init__(self, config_name):
@@ -397,3 +415,9 @@ class ComplexObsRLGPUEnv(vecenv.IVecEnv):
     @property
     def error_buf(self):
         return self.env.error_buf
+
+    @property
+    def strict_success_buf(self):
+        if hasattr(self.env, "strict_success_buf"):
+            return self.env.strict_success_buf
+        return self.env.success_buf

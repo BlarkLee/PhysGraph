@@ -142,6 +142,7 @@ class MyBasePlayer(object):
         self.render_sleep = self.player_config.get("render_sleep", 0.002)
         self.max_steps = 108000 // 4
         self.device = torch.device(self.device_name)
+        self.manual_reset_on_done = bool(self.player_config.get("manual_reset_on_done", False))
 
         self.evaluation = self.player_config.get("evaluation", False)
         self.update_checkpoint_freq = self.player_config.get("update_checkpoint_freq", 100)
@@ -196,6 +197,35 @@ class MyBasePlayer(object):
             self.h5py_file, self.s_grp, self.f_grp = None, None, None
             self.saved_successful_rollouts, self.saved_failed_rollouts = None, None
             self.prev_done_count_sum = None
+
+    def _prompt_manual_reset(self, done: torch.Tensor) -> bool:
+        done_indices = done.nonzero(as_tuple=False).flatten()
+        done_count = len(done_indices)
+        if done_count == 0:
+            return True
+
+        success_count = 0
+        failure_count = 0
+        if hasattr(self.env, "success_buf"):
+            success_count = int(self.env.success_buf[done_indices].sum().item())
+        if hasattr(self.env, "failure_buf"):
+            failure_count = int(self.env.failure_buf[done_indices].sum().item())
+
+        while True:
+            try:
+                user_cmd = input(
+                    f"[manual reset] done_envs={done_count}, success={success_count}, failure={failure_count}. "
+                    "Press Enter/r to reset, q to quit: "
+                ).strip().lower()
+            except EOFError:
+                print("[manual reset] stdin unavailable; continue reset automatically.")
+                return True
+
+            if user_cmd in ("", "r", "reset", "c", "continue"):
+                return True
+            if user_cmd in ("q", "quit", "exit"):
+                return False
+            print("[manual reset] unsupported command, use Enter/r or q.")
 
     def wait_for_checkpoint(self):
         if self.dir_to_monitor is None:
@@ -406,6 +436,11 @@ class MyBasePlayer(object):
         while True:
 
             if done is not None and torch.any(done):
+                if self.manual_reset_on_done or bool(getattr(self.env, "manual_reset_on_done", False)):
+                    should_reset = self._prompt_manual_reset(done)
+                    if not should_reset:
+                        print("[manual reset] user requested exit.")
+                        return
                 obses, _ = self.env.reset_done()
 
             if has_masks:

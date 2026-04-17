@@ -340,6 +340,7 @@ class MyA2CBase(BaseAlgorithm):
         self.game_diff_joints = torch_ext.AverageMeter(self.value_size, self.games_to_track).to(self.ppo_device)
         self.game_diff_ft = torch_ext.AverageMeter(self.value_size, self.games_to_track).to(self.ppo_device)
         self.game_success = torch_ext.AverageMeter(1, self.games_to_track).to(self.ppo_device)
+        self.game_strict_success = torch_ext.AverageMeter(1, self.games_to_track).to(self.ppo_device)
         self.game_fails = torch_ext.AverageMeter(1, self.games_to_track).to(self.ppo_device)
         self.game_shaped_rewards = torch_ext.AverageMeter(self.value_size, self.games_to_track).to(self.ppo_device)
         self.game_lengths = torch_ext.AverageMeter(1, self.games_to_track).to(self.ppo_device)
@@ -736,6 +737,7 @@ class MyA2CBase(BaseAlgorithm):
         self.game_diff_joints.clear()
         self.game_diff_ft.clear()
         self.game_success.clear()
+        self.game_strict_success.clear()
         self.game_fails.clear()
         self.game_shaped_rewards.clear()
         self.game_lengths.clear()
@@ -966,6 +968,8 @@ class MyA2CBase(BaseAlgorithm):
             self.game_diff_ft.update(self.current_diff_ft[env_done_indices])
             self.game_shaped_rewards.update(self.current_shaped_rewards[env_done_indices])
             self.game_success.update(self.vec_env.success_buf[env_done_indices])
+            if hasattr(self.vec_env, "strict_success_buf"):
+                self.game_strict_success.update(self.vec_env.strict_success_buf[env_done_indices])
             self.game_fails.update(self.vec_env.failure_buf[env_done_indices])
             self.game_lengths.update(self.current_lengths[env_done_indices])
             self.algo_observer.process_infos(infos, env_done_indices)
@@ -1393,6 +1397,13 @@ class MyContinuousA2CBase(MyA2CBase):
                     self.writer.add_scalar("success_rate/step", mean_success_rate, frame)
                     self.writer.add_scalar("success_rate/iter", mean_success_rate, epoch_num)
                     self.writer.add_scalar("success_rate/time", mean_success_rate, total_time)
+
+                mean_strict_success_rate = None
+                if self.game_strict_success.current_size > 0:
+                    mean_strict_success_rate = self.game_strict_success.get_mean()
+                    self.writer.add_scalar("strict_eval_sr/step", mean_strict_success_rate, frame)
+                    self.writer.add_scalar("strict_eval_sr/iter", mean_strict_success_rate, epoch_num)
+                    self.writer.add_scalar("strict_eval_sr/time", mean_strict_success_rate, total_time)
 
                 mean_fail_rate = None
                 if self.game_fails.current_size > 0:

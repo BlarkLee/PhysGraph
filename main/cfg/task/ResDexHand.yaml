@@ -16,6 +16,11 @@ env:
 
   rolloutStateInit: ${resolve_default:False,${...rolloutStateInit}}
   randomStateInit: ${resolve_default:True,${...randomStateInit}}
+  manualResetOnDone: ${resolve_default:False,${...manualResetOnDone}}
+  testResetNearStart: ${resolve_default:True,${...testResetNearStart}}
+  resetInitMaxFrame: ${resolve_default:8,${...resetInitMaxFrame}}
+  resetSettleSteps: ${resolve_default:2,${...resetSettleSteps}}
+  resetZeroVelocity: ${resolve_default:True,${...resetZeroVelocity}}
 
   dataIndices: ${resolve_default:[],${...dataIndices}}
   autoOakinkShort: ${resolve_default:False,${...auto_oakink_short}}
@@ -36,6 +41,12 @@ env:
   wRegionGeomReward: 0.2
   ptPosBeta: 20.0
   ptFlowBeta: 10.0
+  strictEvalEnabled: ${resolve_default:True,${...strict_eval_enabled}}
+  strictEvalHoldSteps: ${resolve_default:5,${...strict_eval_hold_steps}}
+  strictEvalEtCm: ${resolve_default:2.0,${...strict_eval_et_cm}}
+  strictEvalErDeg: ${resolve_default:15.0,${...strict_eval_er_deg}}
+  strictEvalEjCm: ${resolve_default:3.5,${...strict_eval_ej_cm}}
+  strictEvalEftCm: ${resolve_default:3.0,${...strict_eval_eft_cm}}
 
   rolloutLen: ${resolve_default:None,${...rolloutLen}}
   rolloutBegin: ${resolve_default:None,${...rolloutBegin}}

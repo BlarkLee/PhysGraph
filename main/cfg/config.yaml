@@ -19,6 +19,17 @@ lh_base_model_checkpoint: assets/imitator_lh_inspire.pth
 num_envs: ''
 rolloutStateInit: False
 randomStateInit: True
+manualResetOnDone: False
+testResetNearStart: True
+resetInitMaxFrame: 8
+resetSettleSteps: 2
+resetZeroVelocity: True
+strict_eval_enabled: True
+strict_eval_hold_steps: 5
+strict_eval_et_cm: 2.0
+strict_eval_er_deg: 15.0
+strict_eval_ej_cm: 3.5
+strict_eval_eft_cm: 3.0
 
 rolloutLen: null
 rolloutBegin: null

@@ -108,8 +108,19 @@ class DexHandManipBiHEnv(VecTask):
         self.w_region_geom_reward = float(self.cfg["env"].get("wRegionGeomReward", 0.2))
         self.pt_pos_beta = float(self.cfg["env"].get("ptPosBeta", 20.0))
         self.pt_flow_beta = float(self.cfg["env"].get("ptFlowBeta", 10.0))
+        self.strict_eval_enabled = bool(self.cfg["env"].get("strictEvalEnabled", True))
+        self.strict_eval_hold_steps = max(1, int(self.cfg["env"].get("strictEvalHoldSteps", 5)))
+        self.strict_eval_et_cm = float(self.cfg["env"].get("strictEvalEtCm", 2.0))
+        self.strict_eval_er_deg = float(self.cfg["env"].get("strictEvalErDeg", 15.0))
+        self.strict_eval_ej_cm = float(self.cfg["env"].get("strictEvalEjCm", 3.5))
+        self.strict_eval_eft_cm = float(self.cfg["env"].get("strictEvalEftCm", 3.0))
         self.rollout_state_init = self.cfg["env"]["rolloutStateInit"]
         self.random_state_init = self.cfg["env"]["randomStateInit"]
+        self.manual_reset_on_done = bool(self.cfg["env"].get("manualResetOnDone", False))
+        self.test_reset_near_start = bool(self.cfg["env"].get("testResetNearStart", True))
+        self.reset_init_max_frame = max(0, int(self.cfg["env"].get("resetInitMaxFrame", 8)))
+        self.reset_settle_steps = max(0, int(self.cfg["env"].get("resetSettleSteps", 2)))
+        self.reset_zero_velocity = bool(self.cfg["env"].get("resetZeroVelocity", True))
 
         self.tighten_method = self.cfg["env"]["tightenMethod"]
         self.tighten_factor = self.cfg["env"]["tightenFactor"]
@@ -208,6 +219,9 @@ class DexHandManipBiHEnv(VecTask):
         self.obj_bps_lh = self.bps_layer.encode(obj_verts_lh, feature_type=self.bps_feat_type)[self.bps_feat_type]
         self.obj_track_points_rh = self._build_fixed_k_points(obj_verts_rh, self.point_track_k)
         self.obj_track_points_lh = self._build_fixed_k_points(obj_verts_lh, self.point_track_k)
+        self.strict_success_streak_rh = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self.strict_success_streak_lh = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self.strict_success_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -1116,10 +1130,76 @@ class DexHandManipBiHEnv(VecTask):
         self.success_buf = rh_success_buf & lh_success_buf
         self.failure_buf = rh_failure_buf | lh_failure_buf
         self.error_buf = rh_error_buf | lh_error_buf
+        self._update_strict_success(
+            rh_diff_obj_pos,
+            rh_diff_obj_rot,
+            rh_diff_joints,
+            rh_diff_ft,
+            rh_error_buf,
+            lh_diff_obj_pos,
+            lh_diff_obj_rot,
+            lh_diff_joints,
+            lh_diff_ft,
+            lh_error_buf,
+        )
         self.reward_dict = {
             **{"rh_" + k: v for k, v in rh_reward_dict.items()},
             **{"lh_" + k: v for k, v in lh_reward_dict.items()},
         }
+
+    def _update_strict_success(
+        self,
+        rh_diff_obj_pos_cm: Tensor,
+        rh_diff_obj_rot_deg: Tensor,
+        rh_diff_joints_cm: Tensor,
+        rh_diff_ft_cm: Tensor,
+        rh_error_buf: Tensor,
+        lh_diff_obj_pos_cm: Tensor,
+        lh_diff_obj_rot_deg: Tensor,
+        lh_diff_joints_cm: Tensor,
+        lh_diff_ft_cm: Tensor,
+        lh_error_buf: Tensor,
+    ):
+        if not self.strict_eval_enabled:
+            self.strict_success_buf[:] = self.success_buf.bool()
+            return
+
+        rh_ok = (
+            (rh_diff_obj_pos_cm <= self.strict_eval_et_cm)
+            & (rh_diff_obj_rot_deg <= self.strict_eval_er_deg)
+            & (rh_diff_joints_cm <= self.strict_eval_ej_cm)
+            & (rh_diff_ft_cm <= self.strict_eval_eft_cm)
+            & (~rh_error_buf.bool())
+        )
+        lh_ok = (
+            (lh_diff_obj_pos_cm <= self.strict_eval_et_cm)
+            & (lh_diff_obj_rot_deg <= self.strict_eval_er_deg)
+            & (lh_diff_joints_cm <= self.strict_eval_ej_cm)
+            & (lh_diff_ft_cm <= self.strict_eval_eft_cm)
+            & (~lh_error_buf.bool())
+        )
+        self.strict_success_streak_rh[:] = torch.where(
+            rh_ok,
+            self.strict_success_streak_rh + 1,
+            torch.zeros_like(self.strict_success_streak_rh),
+        )
+        self.strict_success_streak_lh[:] = torch.where(
+            lh_ok,
+            self.strict_success_streak_lh + 1,
+            torch.zeros_like(self.strict_success_streak_lh),
+        )
+        terminal = self.reset_buf.bool()
+        strict_success = (
+            terminal
+            & (self.strict_success_streak_rh >= self.strict_eval_hold_steps)
+            & (self.strict_success_streak_lh >= self.strict_eval_hold_steps)
+            & (~self.failure_buf.bool())
+        )
+        self.strict_success_buf[:] = torch.where(
+            terminal,
+            strict_success,
+            torch.zeros_like(self.strict_success_buf),
+        )
 
     def compute_reward_side(self, actions, side="rh"):
         side_demo_data = self.demo_data_rh if side == "rh" else self.demo_data_lh
@@ -1290,16 +1370,6 @@ class DexHandManipBiHEnv(VecTask):
             reward_dict["reward_pt_flow"] = reward_pt_flow
             reward_dict["reward_region_geom"] = reward_region_geom
 
-            if not self.pose_fallback:
-                failed_execute = error_buf.bool()
-                succeeded = (self.progress_buf + 1 + 3 >= max_length) & ~failed_execute
-                failure_buf = failed_execute
-                success_buf = succeeded
-                reset_buf = torch.where(
-                    succeeded | failed_execute,
-                    torch.ones_like(reset_buf),
-                    torch.zeros_like(reset_buf),
-                )
         self.total_rew_buf += rew_buf
         return rew_buf, reset_buf, success_buf, failure_buf, reward_dict, error_buf, diff_obj_pos, diff_obj_rot, diff_joints, diff_ft
 
@@ -1538,31 +1608,35 @@ class DexHandManipBiHEnv(VecTask):
                     pass
         return obs_dict
 
-    def _reset_default(self, env_ids):
-        if self.random_state_init:
-            if self.rollout_begin is not None:
+    def _sample_reset_seq_idx(self, env_ids):
+        seq_len = self.demo_data_rh["seq_len"][env_ids]
+        max_seq_idx = torch.floor(seq_len.float() * 0.98).long()
+
+        if self.rollout_begin is not None:
+            if self.random_state_init:
+                rollout_len = self.rollout_len if self.rollout_len is not None else 1
                 seq_idx = (
-                    torch.floor(
-                        self.rollout_len * 0.98 * torch.rand_like(self.demo_data_rh["seq_len"][env_ids].float())
-                    ).long()
+                    torch.floor(rollout_len * 0.98 * torch.rand_like(seq_len.float())).long()
                     + self.rollout_begin
                 )
-                seq_idx = torch.clamp(
-                    seq_idx,
-                    torch.zeros(1, device=self.device).long(),
-                    torch.floor(self.demo_data_rh["seq_len"][env_ids] * 0.98).long(),
-                )
             else:
-                seq_idx = torch.floor(
-                    self.demo_data_rh["seq_len"][env_ids]
-                    * 0.98
-                    * torch.rand_like(self.demo_data_rh["seq_len"][env_ids].float())
-                ).long()
+                seq_idx = self.rollout_begin * torch.ones_like(seq_len.long())
+            return torch.clamp(seq_idx, torch.zeros_like(max_seq_idx), max_seq_idx)
+
+        if self.random_state_init:
+            if (not self.training) and self.test_reset_near_start:
+                early_cap = torch.full_like(max_seq_idx, self.reset_init_max_frame)
+                capped_max = torch.minimum(max_seq_idx, early_cap)
+                seq_idx = torch.floor((capped_max.float() + 1.0) * torch.rand_like(seq_len.float())).long()
+            else:
+                seq_idx = torch.floor(seq_len * 0.98 * torch.rand_like(seq_len.float())).long()
         else:
-            if self.rollout_begin is not None:
-                seq_idx = self.rollout_begin * torch.ones_like(self.demo_data_rh["seq_len"][env_ids].long())
-            else:
-                seq_idx = torch.zeros_like(self.demo_data_rh["seq_len"][env_ids].long())
+            seq_idx = torch.zeros_like(seq_len.long())
+
+        return torch.clamp(seq_idx, torch.zeros_like(max_seq_idx), max_seq_idx)
+
+    def _reset_default(self, env_ids):
+        seq_idx = self._sample_reset_seq_idx(env_ids)
 
         self._reset_default_side(env_ids, seq_idx, side="lh")
         self._reset_default_side(env_ids, seq_idx, side="rh")
@@ -1602,11 +1676,14 @@ class DexHandManipBiHEnv(VecTask):
         self.success_buf[env_ids] = 0
         self.failure_buf[env_ids] = 0
         self.error_buf[env_ids] = 0
+        self.strict_success_streak_rh[env_ids] = 0
+        self.strict_success_streak_lh[env_ids] = 0
+        self.strict_success_buf[env_ids] = 0
         self.total_rew_buf[env_ids] = 0
         self.apply_forces[env_ids] = 0
         self.apply_torque[env_ids] = 0
-        self.curr_targets[env_ids] = 0
-        self.prev_targets[env_ids] = 0
+        self.curr_targets[env_ids] = self._q[env_ids]
+        self.prev_targets[env_ids] = self._q[env_ids]
 
         if self.use_pid_control:
             self.rh_prev_pos_error[env_ids] = 0
@@ -1644,6 +1721,10 @@ class DexHandManipBiHEnv(VecTask):
 
         opt_wrist_vel = side_demo_data["opt_wrist_velocity"][env_ids, seq_idx]
         opt_wrist_ang_vel = side_demo_data["opt_wrist_angular_velocity"][env_ids, seq_idx]
+        if self.reset_zero_velocity and (not self.training):
+            dof_vel = torch.zeros_like(dof_vel)
+            opt_wrist_vel = torch.zeros_like(opt_wrist_vel)
+            opt_wrist_ang_vel = torch.zeros_like(opt_wrist_ang_vel)
 
         opt_hand_pose_vel = torch.concat([opt_wrist_pos, opt_wrist_rot, opt_wrist_vel, opt_wrist_ang_vel], dim=-1)
 
@@ -1667,6 +1748,9 @@ class DexHandManipBiHEnv(VecTask):
 
         obj_vel = side_demo_data["obj_velocity"][env_ids, seq_idx]
         obj_ang_vel = side_demo_data["obj_angular_velocity"][env_ids, seq_idx]
+        if self.reset_zero_velocity and (not self.training):
+            obj_vel = torch.zeros_like(obj_vel)
+            obj_ang_vel = torch.zeros_like(obj_ang_vel)
 
         manip_obj_root_state = getattr(self, f"_manip_obj_{side}_root_state")
 
@@ -1970,6 +2054,13 @@ class DexHandManipBiHEnv(VecTask):
                 * self.apply_torque[:, self.dexhand_lh_handles[self.dexhand_lh.to_dex("wrist")[0]], :]
             )
 
+        if (not self.training) and self.reset_settle_steps > 0:
+            settle_mask = self.running_progress_buf < self.reset_settle_steps
+            if torch.any(settle_mask):
+                self.apply_forces[settle_mask] = 0
+                self.apply_torque[settle_mask] = 0
+                self.prev_targets[settle_mask] = self._q[settle_mask]
+
         self.gym.apply_rigid_body_force_tensors(
             self.sim,
             gymtorch.unwrap_tensor(self.apply_forces),
@@ -2076,7 +2167,7 @@ def compute_imitation_reward(
     max_length: List[int],
     scale_factor: float,
     dexhand_weight_idx: Dict[str, List[int]],
-) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Tensor, Tensor, Tensor, Tensor, Tensor]:
 
     # type: (Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, Tensor], Tensor, float,  Dict[str, List[int]]) -> Tuple[Tensor, Tensor, Tensor, Tensor, Dict[str, Tensor], Tensor, Tensor, Tensor, Tensor, Tensor]
 
