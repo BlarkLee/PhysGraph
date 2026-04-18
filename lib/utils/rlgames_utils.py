@@ -332,6 +332,10 @@ class RLGPUEnv(vecenv.IVecEnv):
             return self.env.strict_success_buf
         return self.env.success_buf
 
+    @property
+    def manual_reset_on_done(self):
+        return bool(getattr(self.env, "manual_reset_on_done", False))
+
 
 class ComplexObsRLGPUEnv(vecenv.IVecEnv):
     def __init__(self, config_name):
@@ -421,3 +425,7 @@ class ComplexObsRLGPUEnv(vecenv.IVecEnv):
         if hasattr(self.env, "strict_success_buf"):
             return self.env.strict_success_buf
         return self.env.success_buf
+
+    @property
+    def manual_reset_on_done(self):
+        return bool(getattr(self.env, "manual_reset_on_done", False))

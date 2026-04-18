@@ -227,6 +227,16 @@ class MyBasePlayer(object):
                 return False
             print("[manual reset] unsupported command, use Enter/r or q.")
 
+    def _manual_reset_enabled(self) -> bool:
+        if self.manual_reset_on_done:
+            return True
+        if bool(getattr(self.env, "manual_reset_on_done", False)):
+            return True
+        base_env = getattr(self.env, "env", None)
+        if base_env is not None and bool(getattr(base_env, "manual_reset_on_done", False)):
+            return True
+        return False
+
     def wait_for_checkpoint(self):
         if self.dir_to_monitor is None:
             return
@@ -440,7 +450,7 @@ class MyBasePlayer(object):
         while True:
 
             if done is not None and torch.any(done):
-                if self.manual_reset_on_done or bool(getattr(self.env, "manual_reset_on_done", False)):
+                if self._manual_reset_enabled():
                     should_reset = self._prompt_manual_reset(done)
                     if not should_reset:
                         print("[manual reset] user requested exit.")
