@@ -154,11 +154,9 @@ We follow the prerequisit of [ManipTrans](https://maniptrans.github.io/) to prep
   <details>
   <summary>Parallel Training:</summary>
   Training also supports multi-GPUs, here is an example of 2-GPUs parallel training:
-    
-     ```bash
-     CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.run --standalone --nproc_per_node=2 main/rl/train.py   task=ResDexHand dexhand=artimano side=BiH headless=true multi_gpu=true   num_envs=4096 learning_rate=2e-4 test=false randomStateInit=true   dataIndices=[083f7@0] early_stop_epochs=10000 actionsMovingAverage=0.4   experiment=083f7@0_artimano_2gpu
-     ```
-     
+    ```bash
+    CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.run --standalone --nproc_per_node=2 main/rl/train.py   task=ResDexHand dexhand=artimano side=BiH headless=true multi_gpu=true num_envs=4096 learning_rate=2e-4 test=false randomStateInit=true dataIndices=[083f7@0] early_stop_epochs=10000 actionsMovingAverage=0.4 experiment=083f7@0_artimano_2gpu
+    ```  
   </details>
 
 4. **Test**
